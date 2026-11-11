@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Решись Авиа — Динамическое ценообразование</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="bg-light">
+
+    <!-- Навигационная панель с кнопкой выхода -->
+    <nav class="navbar navbar-light bg-white shadow-sm mb-4">
+        <div class="container">
+            <span class="navbar-brand fw-bold text-primary">✈️ Решись Авиа</span>
+            <button id="logoutBtn" class="btn btn-outline-danger btn-sm d-none">Выйти</button>
+        </div>
+    </nav>
+
+    <div class="container my-4">
+
+        <!-- КАРТОЧКА АВТОРИЗАЦИЯ -->
+        <div class="row justify-content-center" id="authSection">
+            <div class="col-md-5">
+                <div class="card shadow p-4">
+                    <h4 class="text-center mb-3">Вход в систему</h4>
+                    <form id="authForm">
+                        <div class="mb-3">
+                            <label class="form-label">Логин</label>
+                            <input type="text" class="form-control" id="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Пароль</label>
+                            <input type="password" class="form-control" id="password" required>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <button type="button" id="loginBtn" class="btn btn-primary w-100 me-2">Войти</button>
+                            <button type="button" id="regBtn"
+                                class="btn btn-outline-secondary w-100 ms-2">Регистрация</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- КАРТОЧКА КАЛЬКУЛЯТОРА (СКРЫТА) -->
+        <div class="row justify-content-center d-none" id="appSection">
+            <div class="col-md-8">
+                <div class="card shadow p-4 mb-4">
+                    <h4 class="mb-3">Параметры рейса</h4>
+                    <form id="predictForm">
+                        <div class="mb-3">
+                            <label class="form-label">Маршрут</label>
+                            <select class="form-select" id="routeSelect" required>
+                                <option value="">Загрузка маршрутов...</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Дата вылета (доступен июнь 2026)</label>
+                            <input type="text" class="form-control" id="dateInput" value="2026-06-12" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Цена билета (руб.)</label>
+                            <input type="number" class="form-control" id="priceInput" value="9000" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Рассчитать спрос</button>
+                    </form>
+                </div>
+
+                <div id="resultsCard" class="card shadow p-4 d-none">
+                    <h4 class="mb-3">Результаты расчета</h4>
+                    <div class="row text-center mb-4">
+                        <div class="col-md-4">
+                            <div class="p-3 border bg-white rounded">
+                                <span class="text-muted d-block">Всего мест</span>
+                                <h3 id="resSeats" class="fw-bold text-dark">-</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 border bg-white rounded">
+                                <span class="text-muted d-block">Продадим билетов</span>
+                                <h3 id="resBought" class="fw-bold text-success">-</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 border bg-white rounded">
+                                <span class="text-muted d-block">Свободных мест</span>
+                                <h3 id="resFree" class="fw-bold text-warning">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <h5 class="mb-3">Распределение спроса (Квантили 0.1 – 0.9)</h5>
+                    <canvas id="demandChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "";
+        let myChart = null;
+
+        // ---------- ЛОГИКА АВТОРИЗАЦИИ ----------
+
+        document.getElementById('regBtn').addEventListener('click', async () => {
+            let u = document.getElementById('username').value;
+            let p = document.getElementById('password').value;
+            if (!u || !p) return alert("Введите логин и пароль!");
+
+            let res = await fetch(`${API_URL}/register`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: u, password: p })
+            });
+            let data = await res.json();
+            alert(res.ok ? "Успешная регистрация! Теперь войдите." : data.detail);
+        });
+
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            let u = document.getElementById('username').value;
+            let p = document.getElementById('password').value;
+            if (!u || !p) return alert("Введите логин и пароль!");
+
+            let res = await fetch(`${API_URL}/login`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: u, password: p })
+            });
+
+            if (res.ok) {
+                let data = await res.json();
+                localStorage.setItem("authToken", data.token); // Сохраняем токен в браузере
+                showApp();
+            } else {
+                alert("Неверный логин или пароль!");
+            }
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            localStorage.removeItem("authToken");
+            document.getElementById('authSection').classList.remove('d-none');
+            document.getElementById('appSection').classList.add('d-none');
+            document.getElementById('logoutBtn').classList.add('d-none');
+            document.getElementById('resultsCard').classList.add('d-none');
+        });
+
+        // Показываем приложение, если есть токен
+        function showApp() {
+            document.getElementById('authSection').classList.add('d-none');
+            document.getElementById('appSection').classList.remove('d-none');
+            document.getElementById('logoutBtn').classList.remove('d-none');
+            loadRoutes();
+        }
+
+        // Проверяем при загрузке страницы, вошел ли человек ранее
+        if (localStorage.getItem("authToken")) {
+            showApp();
+        }
+
+        // ---------- ЛОГИКА КАЛЬКУЛЯТОРА ----------
+
+        async function loadRoutes() {
+            let select = document.getElementById('routeSelect');
+            if (select.options.length > 1) return; // Уже загружено
+            try {
+                let res = await fetch(`${API_URL}/routes`);
+                let routes = await res.json();
+                select.innerHTML = '<option value="">Выберите маршрут...</option>';
+                routes.forEach(r => select.innerHTML += `<option value="${r.route}">${r.name} (${r.route})</option>`);
+            } catch (e) {
+                console.error("Ошибка загрузки маршрутов");
+            }
+        }
+
+        document.getElementById('predictForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            let token = localStorage.getItem("authToken");
+            let route = document.getElementById('routeSelect').value;
+            let date = document.getElementById('dateInput').value;
+            let price = parseFloat(document.getElementById('priceInput').value);
+
+            let res = await fetch(`${API_URL}/predict`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` // Передаем токен серверу!
+                },
+                body: JSON.stringify({ route, date, price })
+            });
+
+            if (res.status === 401) {
+                alert("Сессия истекла, войдите заново!");
+                document.getElementById('logoutBtn').click();
+                return;
+            }
+
+            if (!res.ok) {
+                let err = await res.json();
+                return alert("Ошибка: " + (err.detail || "Неверные данные"));
+            }
+
+            let data = await res.json();
+            document.getElementById('resSeats').innerText = data.seats;
+            document.getElementById('resBought').innerText = data.bought;
+            document.getElementById('resFree').innerText = data.free_seats;
+            document.getElementById('resultsCard').classList.remove('d-none');
+            drawChart(data.distribution, data.seats);
+        });
+
+        // Функция отрисовки графика 
+        function drawChart(distribution, seats) {
+            let ctx = document.getElementById('demandChart').getContext('2d');
+            let labels = distribution.map(d => `Квантиль ${d.quantile}`);
+            let boughtData = distribution.map(d => d.bought);
+            let seatsData = Array(distribution.length).fill(seats);
+
+            if (myChart) myChart.destroy();
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Прогноз продаж (чел)', data: boughtData, borderColor: 'rgba(13,110,253,1)', backgroundColor: 'rgba(13,110,253,0.1)', fill: true, tension: 0.2 },
+                        { label: 'Вместимость (мест)', data: seatsData, borderColor: 'rgba(220,53,69,1)', borderDash: [5, 5], pointRadius: 0, fill: false }
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+        }
+    </script>
+</body>
+
+</html>
