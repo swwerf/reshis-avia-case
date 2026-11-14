@@ -9,7 +9,7 @@
 ---
 
 ## 🌐 Ссылка на работающий сервис (Хостинг)
-🔗 **[ВСТАВИТЬ ССЫЛКУ ПОСЛЕ ДЕПЛОЯ НА RENDER, например: https://reshis-avia.onrender.com]**
+🔗[**https://reshis-avia-case.onrender.com**](https://reshis-avia-case.onrender.com)
 
 ---
 
